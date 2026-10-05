@@ -87,7 +87,7 @@ if (audioToggleBtn) {
   });
 }
 
-/* ═══ TELEMETRY TICKER LIVE CLOCK & FREQ ═══ */
+/* ═══ TELEMETRY TICKER LIVE CLOCK & FREQ (THROTTLED) ═══ */
 const tbClock = document.getElementById('tb-clock');
 const tbFreq = document.getElementById('tb-freq');
 
@@ -96,16 +96,15 @@ function updateTelemetry() {
   const h = String(now.getUTCHours()).padStart(2, '0');
   const m = String(now.getUTCMinutes()).padStart(2, '0');
   const s = String(now.getUTCSeconds()).padStart(2, '0');
-  const ms = String(now.getUTCMilliseconds()).padStart(3, '0');
-  if (tbClock) tbClock.textContent = `${h}:${m}:${s}.${ms}`;
+  if (tbClock) tbClock.textContent = `${h}:${m}:${s}`;
   
-  if (tbFreq && Math.random() < 0.08) {
+  if (tbFreq && Math.random() < 0.2) {
     const val = (2.840 + (Math.random() * 0.015)).toFixed(3);
     tbFreq.textContent = `${val} THz`;
   }
-  requestAnimationFrame(updateTelemetry);
 }
-requestAnimationFrame(updateTelemetry);
+setInterval(updateTelemetry, 500);
+updateTelemetry();
 
 /* ═══ INITIAL LOADER ═══ */
 const loaderBar = document.getElementById('loader-bar');
@@ -129,151 +128,261 @@ const loaderInterval = setInterval(() => {
 
 document.body.style.overflow = 'hidden';
 
-/* ═══ CUSTOM MOUSE CURSOR ═══ */
+/* ═══ CUSTOM MOUSE CURSOR (FINE POINTER ONLY) ═══ */
+const hasFinePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const cursorEl = document.getElementById('cursor');
 const cursorDot = document.getElementById('cursor-dot');
 let cx = 0, cy = 0, tx = 0, ty = 0;
 
-document.addEventListener('mousemove', (e) => {
-  cx = e.clientX; cy = e.clientY;
-  if (cursorDot) {
-    cursorDot.style.left = cx + 'px';
-    cursorDot.style.top = cy + 'px';
-  }
-});
-
-(function trailLoop() {
-  tx += (cx - tx) * 0.12;
-  ty += (cy - ty) * 0.12;
-  if (cursorEl) {
-    cursorEl.style.left = tx + 'px';
-    cursorEl.style.top = ty + 'px';
-  }
-  requestAnimationFrame(trailLoop);
-})();
-
-document.querySelectorAll('a, button, .clip-card, .mc, .stat, .cf, .tqb').forEach(el => {
-  el.addEventListener('mouseenter', () => {
-    soundHover();
-    if (cursorEl) {
-      cursorEl.querySelector('.cursor-ring').style.transform = 'scale(1.8)';
-      cursorEl.querySelector('.cursor-ring').style.borderColor = 'rgba(0,240,255,.9)';
+if (!hasFinePointer) {
+  if (cursorEl) cursorEl.style.display = 'none';
+  if (cursorDot) cursorDot.style.display = 'none';
+  document.body.classList.add('touch-device');
+} else {
+  document.addEventListener('mousemove', (e) => {
+    cx = e.clientX; cy = e.clientY;
+    if (cursorDot) {
+      cursorDot.style.left = cx + 'px';
+      cursorDot.style.top = cy + 'px';
     }
-  });
-  el.addEventListener('mouseleave', () => {
-    if (cursorEl) {
-      cursorEl.querySelector('.cursor-ring').style.transform = '';
-      cursorEl.querySelector('.cursor-ring').style.borderColor = '';
-    }
-  });
-  el.addEventListener('click', () => {
-    soundClick();
-  });
-});
+  }, { passive: true });
 
-/* ═══ PARTICLE CANVAS MATRIX ═══ */
+  (function trailLoop() {
+    tx += (cx - tx) * 0.12;
+    ty += (cy - ty) * 0.12;
+    if (cursorEl) {
+      cursorEl.style.left = tx + 'px';
+      cursorEl.style.top = ty + 'px';
+    }
+    requestAnimationFrame(trailLoop);
+  })();
+
+  document.querySelectorAll('a, button, .clip-card, .mc, .stat, .cf, .tqb').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      soundHover();
+      if (cursorEl) {
+        const ring = cursorEl.querySelector('.cursor-ring');
+        if (ring) {
+          ring.style.transform = 'scale(1.8)';
+          ring.style.borderColor = 'rgba(0,240,255,.9)';
+        }
+      }
+    });
+    el.addEventListener('mouseleave', () => {
+      if (cursorEl) {
+        const ring = cursorEl.querySelector('.cursor-ring');
+        if (ring) {
+          ring.style.transform = '';
+          ring.style.borderColor = '';
+        }
+      }
+    });
+    el.addEventListener('click', () => {
+      soundClick();
+    });
+  });
+}
+
+/* ═══ PARTICLE CANVAS MATRIX (PERFORMANCE OPTIMIZED & AUTO-PAUSED) ═══ */
 (function particles() {
   const canvas = document.getElementById('hero-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  let W = canvas.width = innerWidth;
-  let H = canvas.height = innerHeight;
-  const N = 120;
+  
+  let isMobile = window.innerWidth < 768;
+  const N = isMobile ? 30 : 64;
+  const maxLineDist = isMobile ? 70 : 95;
+  
+  let W = canvas.width = window.innerWidth;
+  let H = canvas.height = window.innerHeight;
+
   const pts = Array.from({ length: N }, () => ({
     x: Math.random() * W, y: Math.random() * H,
-    vx: (Math.random() - .5) * .4,
-    vy: -(Math.random() * .5 + .15),
-    r: Math.random() * 1.8 + .4,
-    op: Math.random() * .5 + .1,
+    vx: (Math.random() - .5) * .35,
+    vy: -(Math.random() * .4 + .12),
+    r: Math.random() * 1.5 + .4,
+    op: Math.random() * .4 + .1,
     ph: Math.random() * Math.PI * 2,
     col: Math.random() > .5 ? '0,240,255' : '123,47,255',
   }));
 
   let mouseX = -9999, mouseY = -9999;
-  canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+  if (hasFinePointer) {
+    window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; }, { passive: true });
+  }
+
+  let isCanvasActive = true;
+  let animId = null;
 
   function draw() {
+    if (!isCanvasActive) return;
     ctx.clearRect(0, 0, W, H);
-    pts.forEach(p => {
+    
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
       p.x += p.vx; p.y += p.vy; p.ph += .018;
-      p.op = .25 + Math.sin(p.ph) * .2;
+      p.op = .2 + Math.sin(p.ph) * .18;
       if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
       if (p.x < -5 || p.x > W + 5) p.x = Math.random() * W;
       
-      const dx = p.x - mouseX, dy = p.y - mouseY;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < 95) { p.x += (dx / d) * 1.8; p.y += (dy / d) * 1.8; }
+      if (hasFinePointer) {
+        const dx = p.x - mouseX, dy = p.y - mouseY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 85) { p.x += (dx / d) * 1.5; p.y += (dy / d) * 1.5; }
+      }
       
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${p.col},${p.op})`;
       ctx.fill();
-    });
-    
-    for (let i = 0; i < pts.length; i++) {
+
+      // Nearby connections
       for (let j = i + 1; j < pts.length; j++) {
-        const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+        const p2 = pts[j];
+        const dx = p.x - p2.x;
+        if (Math.abs(dx) > maxLineDist) continue;
+        const dy = p.y - p2.y;
+        if (Math.abs(dy) > maxLineDist) continue;
         const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < 110) {
-          ctx.strokeStyle = `rgba(0,240,255,${(1 - d / 110) * .12})`;
+        if (d < maxLineDist) {
+          ctx.strokeStyle = `rgba(0,240,255,${(1 - d / maxLineDist) * .1})`;
           ctx.lineWidth = .5;
           ctx.beginPath();
-          ctx.moveTo(pts[i].x, pts[i].y);
-          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
         }
       }
     }
-    requestAnimationFrame(draw);
+    
+    animId = requestAnimationFrame(draw);
   }
-  draw();
-  window.addEventListener('resize', () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; });
+
+  // IntersectionObserver: Pause canvas when hero is offscreen!
+  const heroSection = document.getElementById('hero');
+  if ('IntersectionObserver' in window && heroSection) {
+    const canvasObserver = new IntersectionObserver((entries) => {
+      isCanvasActive = entries[0].isIntersecting;
+      if (isCanvasActive) {
+        if (!animId) animId = requestAnimationFrame(draw);
+      } else {
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+      }
+    }, { threshold: 0.05 });
+    canvasObserver.observe(heroSection);
+  } else {
+    draw();
+  }
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      isMobile = window.innerWidth < 768;
+    }, 200);
+  }, { passive: true });
 })();
 
-/* ═══ NAVBAR & SCROLL REVEALS ═══ */
+/* ═══ NAVBAR & SCROLL REVEALS (THROTTLED) ═══ */
 const navbar = document.getElementById('navbar');
 const navLinks = document.querySelectorAll('.nl');
 const sections = document.querySelectorAll('section[id]');
 
-window.addEventListener('scroll', () => {
-  if (navbar) navbar.classList.toggle('scrolled', scrollY > 40);
-  updateNav();
-});
-
 function updateNav() {
+  const scrollPos = window.scrollY;
   let active = '';
-  sections.forEach(s => { if (scrollY >= s.offsetTop - 140) active = s.id; });
+  sections.forEach(s => {
+    if (scrollPos >= s.offsetTop - 180) active = s.id;
+  });
   navLinks.forEach(l => {
     l.classList.toggle('active', l.getAttribute('href') === '#' + active);
   });
 }
 
+let scrollTicking = false;
+window.addEventListener('scroll', () => {
+  if (!scrollTicking) {
+    requestAnimationFrame(() => {
+      if (navbar) navbar.classList.toggle('scrolled', window.scrollY > 40);
+      updateNav();
+      scrollTicking = false;
+    });
+    scrollTicking = true;
+  }
+}, { passive: true });
+
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
-    const t = document.querySelector(a.getAttribute('href'));
+    const href = a.getAttribute('href');
+    if (href === '#' || !href) return;
+    const t = document.querySelector(href);
     if (t) {
       e.preventDefault();
       t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Close mobile menu if open
+      if (navMenu && navMenu.classList.contains('mobile-open')) {
+        closeMobileMenu();
+      }
     }
   });
 });
 
-// Hamburger
+// Hamburger Mobile Menu
 const burger = document.getElementById('burger');
 const navMenu = document.getElementById('nav-menu');
-if (burger && navMenu) {
-  burger.addEventListener('click', () => {
-    const open = navMenu.style.display === 'flex';
-    Object.assign(navMenu.style, open ? { display: '' } : {
-      display: 'flex', flexDirection: 'column', position: 'absolute',
-      top: '72px', left: '0', right: '0', background: 'rgba(1,4,8,.97)',
-      backdropFilter: 'blur(20px)', padding: '22px 28px', gap: '8px',
-      borderBottom: '1px solid rgba(0,240,255,.15)', zIndex: '999'
-    });
+
+function closeMobileMenu() {
+  if (!navMenu) return;
+  navMenu.classList.remove('mobile-open');
+  navMenu.style.display = '';
+  if (burger) {
     const s = burger.querySelectorAll('span');
-    s[0].style.transform = open ? '' : 'rotate(45deg) translate(5px,5px)';
-    s[1].style.opacity = open ? '1' : '0';
-    s[2].style.transform = open ? '' : 'rotate(-45deg) translate(5px,-5px)';
+    if (s.length >= 3) {
+      s[0].style.transform = '';
+      s[1].style.opacity = '';
+      s[2].style.transform = '';
+    }
+  }
+}
+
+function openMobileMenu() {
+  if (!navMenu) return;
+  navMenu.classList.add('mobile-open');
+  Object.assign(navMenu.style, {
+    display: 'flex', flexDirection: 'column', position: 'fixed',
+    top: 'calc(var(--nav) + var(--tb-h))', left: '0', right: '0', bottom: '0',
+    background: 'rgba(1,4,8,.98)', backdropFilter: 'blur(20px)',
+    padding: '24px 28px', gap: '12px',
+    borderBottom: '1px solid rgba(0,240,255,.2)', zIndex: '9999',
+    overflowY: 'auto'
+  });
+  if (burger) {
+    const s = burger.querySelectorAll('span');
+    if (s.length >= 3) {
+      s[0].style.transform = 'rotate(45deg) translate(5px,5px)';
+      s[1].style.opacity = '0';
+      s[2].style.transform = 'rotate(-45deg) translate(5px,-5px)';
+    }
+  }
+}
+
+if (burger && navMenu) {
+  burger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (navMenu.classList.contains('mobile-open')) {
+      closeMobileMenu();
+    } else {
+      openMobileMenu();
+    }
+  });
+  
+  // Close menu when clicking outside
+  document.addEventListener('click', (e) => {
+    if (navMenu.classList.contains('mobile-open') && !navMenu.contains(e.target) && !burger.contains(e.target)) {
+      closeMobileMenu();
+    }
   });
 }
 
@@ -343,13 +452,13 @@ filterBtns.forEach(btn => {
   });
 });
 
-/* ═══ SAMPLE CLIPS: HOLOGRAPHIC LIGHTBOX (ALL 10 ZENOVO ROBOTIC MODELS WITH 10s VIDEOS) ═══ */
+/* ═══ SAMPLE CLIPS: HOLOGRAPHIC LIGHTBOX (ALL 10 ZENOVO ROBOTIC MODELS) ═══ */
 const lightboxData = [
   {
     video: 'robot_clip_1.mp4',
     img: 'robot_clip_1.jpg',
     name: 'Zenovo Robotic Atlas-Dynamic',
-    label: 'ZENOVO ROBOTIC ATLAS-DYNAMIC // BIPEDAL VAULT (10s HD)',
+    label: 'ZENOVO ROBOTIC ATLAS-DYNAMIC // BIPEDAL VAULT (HD)',
     status: '🏃 DYNAMIC OBSTACLE VAULT CLEARED',
     coords: 'TESTING HANGAR B4 // HIGH-SPEED TRACKING OK',
     desc: 'High-power bipedal research humanoid with carbon-composite limbs and high-bandwidth hydraulic force actuators. Navigates real-world obstacle courses autonomously.',
@@ -363,7 +472,7 @@ const lightboxData = [
     video: 'robot_clip_2.mp4',
     img: 'robot_clip_2.jpg',
     name: 'Zenovo Robotic Kinetic-Legs',
-    label: 'ZENOVO ROBOTIC KINETIC-LEGS // HYDRAULIC STRIDE (10s HD)',
+    label: 'ZENOVO ROBOTIC KINETIC-LEGS // HYDRAULIC STRIDE (HD)',
     status: '🦿 HYDRAULIC SUSPENSION CALIBRATED',
     coords: 'DYNAMICS LAB // GROUND REACTION SENSORS ACTIVE',
     desc: 'Dual inverted hydraulic knee architecture with elastomer shock absorption. Absorbs up to 800 kg-force impact upon ground landing with zero joint backlash.',
@@ -377,7 +486,7 @@ const lightboxData = [
     video: 'robot_clip_3.mp4',
     img: 'robot_clip_3.jpg',
     name: 'Zenovo Robotic Dexter-Grip',
-    label: 'ZENOVO ROBOTIC DEXTER-GRIP // 16-DOF TACTILE HAND (10s HD)',
+    label: 'ZENOVO ROBOTIC DEXTER-GRIP // 16-DOF TACTILE HAND (HD)',
     status: '🖐 SUB-MILLIMETER TACTILE GRIP ONLINE',
     coords: 'MANIPULATION CELL // FORCE SENSORS NORMAL',
     desc: '5-finger articulated biomechanical hand featuring cable-driven synthetic tendons and 256 silicone tactile pressure cells per fingertip.',
@@ -391,7 +500,7 @@ const lightboxData = [
     video: 'robot_clip_4.mp4',
     img: 'robot_clip_4.jpg',
     name: 'Zenovo Robotic Prime-One',
-    label: 'ZENOVO ROBOTIC PRIME-ONE // WORKSTATION HUMANOID (10s HD)',
+    label: 'ZENOVO ROBOTIC PRIME-ONE // WORKSTATION HUMANOID (HD)',
     status: '🏭 COLLABORATIVE LOGISTICS ACTIVE',
     coords: 'ASSEMBLY LINE // WORKFORCE PROTOCOL LEVEL-1',
     desc: 'Commercial humanoid engineered for factory logistics, assembly lines, and collaborative tool operation with human workforce safety protocols.',
@@ -405,7 +514,7 @@ const lightboxData = [
     video: 'robot_clip_5.mp4',
     img: 'robot_clip_5.jpg',
     name: 'Zenovo Robotic Vision-Stereo',
-    label: 'ZENOVO ROBOTIC VISION-STEREO // OPTIC DEPTH (10s HD)',
+    label: 'ZENOVO ROBOTIC VISION-STEREO // OPTIC DEPTH (HD)',
     status: '👁 STEREOSCOPIC POINT CLOUD LOCKED',
     coords: 'SPATIAL TEST // DUAL F/1.4 LENSES FOCUSED',
     desc: 'Dual multi-focal optical cameras with anti-reflective sapphire coating. Merges real-time stereoscopic depth disparity with high-speed optical flow.',
@@ -419,7 +528,7 @@ const lightboxData = [
     video: 'robot_clip_6.mp4',
     img: 'robot_clip_6.jpg',
     name: 'Zenovo Robotic Cranium-X',
-    label: 'ZENOVO ROBOTIC CRANIUM-X // EDGE NEURAL CORE (10s HD)',
+    label: 'ZENOVO ROBOTIC CRANIUM-X // EDGE NEURAL CORE (HD)',
     status: '🧠 INFERENCE LATENCY 0.8ms',
     coords: 'CNC TITANIUM HOUSING // PASSIVE FIN COOLING',
     desc: 'CNC-machined aerospace titanium head chassis housing dual neural accelerators, passive thermal heatsink fins, and 360-degree acoustic microphone array.',
@@ -433,7 +542,7 @@ const lightboxData = [
     video: 'robot_clip_7.mp4',
     img: 'zenovo_hero_robot.jpg',
     name: 'Zenovo Robotic Prime-X',
-    label: 'ZENOVO ROBOTIC PRIME-X // FLAGSHIP HUMANOID (10s HD)',
+    label: 'ZENOVO ROBOTIC PRIME-X // FLAGSHIP HUMANOID (HD)',
     status: '👑 PRODUCTION MODEL v4 ONLINE',
     coords: 'RESEARCH TESTBED // WHOLE-BODY EQUILIBRIUM',
     desc: 'Our flagship general-purpose commercial humanoid robot. Combining 34 active degrees of freedom with human-scale form factor and whole-body balance.',
@@ -447,7 +556,7 @@ const lightboxData = [
     video: 'robot_clip_8.mp4',
     img: 'zenovo_robot_closeup.jpg',
     name: 'Zenovo Robotic Sensor-Array',
-    label: 'ZENOVO ROBOTIC SENSOR-ARRAY // SPATIAL LIDAR (10s HD)',
+    label: 'ZENOVO ROBOTIC SENSOR-ARRAY // SPATIAL LIDAR (HD)',
     status: '🔬 MULTI-SPECTRAL SENSOR FUSION ACTIVE',
     coords: 'PERCEPTION SUITE // SOLID-STATE LiDAR OK',
     desc: 'Integrated sensor suite incorporating time-of-flight LiDAR, thermal infrared mapping, and high-definition wide-baseline RGB vision.',
@@ -461,7 +570,7 @@ const lightboxData = [
     video: 'robot_clip_9.mp4',
     img: 'zenovo_robot_models.jpg',
     name: 'Zenovo Robotic Factory-Fleet',
-    label: 'ZENOVO ROBOTIC FLEET // DEPLOYED WORKFORCE (10s HD)',
+    label: 'ZENOVO ROBOTIC FLEET // DEPLOYED WORKFORCE (HD)',
     status: '⚙ MULTI-AGENT SYNCHRONIZATION ACTIVE',
     coords: 'GLOBAL TELEMETRY // 5,000 ROBOTS DEPLOYED',
     desc: 'Multi-unit industrial collective coordination. Fleet-linked humanoid units collaborating in manufacturing logistics and pallet transfer.',
@@ -475,7 +584,7 @@ const lightboxData = [
     video: 'robot_clip_10.mp4',
     img: 'zenovo_tech_lab.jpg',
     name: 'Zenovo Robotic Testing Lab',
-    label: 'ZENOVO ROBOTIC LAB // R&D TESTING FACILITY (10s HD)',
+    label: 'ZENOVO ROBOTIC LAB // R&D TESTING FACILITY (HD)',
     status: '🔬 ISO-5 ROBOTICS INTEGRATION FACILITY',
     coords: 'R&D FACILITY // DYNAMICS STAGE SECTOR 4',
     desc: 'State-of-the-art humanoid manufacturing and validation laboratory where hardware endurance, gait balance, and neural perception are certified 24/7.',
@@ -489,10 +598,10 @@ const lightboxData = [
     video: 'robot_action_10s.mp4',
     img: 'robot_action_poster.jpg',
     name: 'Zenovo Robotic Dynamic Agility Test',
-    label: 'ZENOVO ROBOTIC 10s DYNAMIC AGILITY // OBSTACLE TEST',
-    status: '🏃 FULL DYNAMIC BIPEDAL TEST SEQUENCE (10 SECONDS)',
+    label: 'ZENOVO ROBOTIC DYNAMIC AGILITY // OBSTACLE TEST',
+    status: '🏃 FULL DYNAMIC BIPEDAL TEST SEQUENCE',
     coords: 'HANGAR B4 TEST TRACK // HIGH-SPEED CAPTURE',
-    desc: '10-second multi-angle robotics test sequence: Atlas-Dynamic leaping over 1.4m hurdle, stereoscopic lens autofocus, and torso balance compensation.',
+    desc: 'Multi-angle robotics test sequence: Atlas-Dynamic leaping over 1.4m hurdle, stereoscopic lens autofocus, and torso balance compensation.',
     metrics: [
       { l: 'TEST DURATION', v: '10.00 Seconds' },
       { l: 'OBSTACLE HEIGHT', v: '1.40 Meters' },
@@ -659,19 +768,45 @@ if (acHologramBtn) {
   });
 }
 
-// Card hover video stream triggers
-document.querySelectorAll('.clip-card').forEach(card => {
-  const vid = card.querySelector('.cc-video');
-  if (vid) {
-    card.addEventListener('mouseenter', () => {
-      vid.currentTime = 0;
-      vid.play().catch(() => {});
+/* ═══ VIEWPORT VIDEO AUTOPLAY CONTROLLER (MOBILE & LAPTOP OPTIMIZED) ═══ */
+const bgVideos = document.querySelectorAll('.hero-video, .tech-video, .lab-video');
+if ('IntersectionObserver' in window) {
+  const vidObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const vid = entry.target;
+      const isHero = vid.classList.contains('hero-video');
+      const isHidden = vid.offsetParent === null || (isHero && window.innerWidth <= 1024);
+      
+      if (entry.isIntersecting && !isHidden) {
+        vid.play().catch(() => {});
+      } else {
+        vid.pause();
+      }
     });
-    card.addEventListener('mouseleave', () => {
-      vid.pause();
-    });
-  }
-});
+  }, { threshold: 0.15 });
+
+  bgVideos.forEach(vid => vidObserver.observe(vid));
+}
+
+// Card hover video streaming for desktop fine pointers
+if (hasFinePointer) {
+  document.querySelectorAll('.clip-card').forEach(card => {
+    const vid = card.querySelector('.cc-video');
+    if (vid) {
+      card.addEventListener('mouseenter', () => {
+        if (vid.dataset.src && !vid.src) {
+          vid.src = vid.dataset.src;
+          vid.load();
+        }
+        vid.currentTime = 0;
+        vid.play().catch(() => {});
+      });
+      card.addEventListener('mouseleave', () => {
+        vid.pause();
+      });
+    }
+  });
+}
 
 function openLightbox(i) {
   currentClip = i;
@@ -798,20 +933,22 @@ document.addEventListener('keydown', e => {
   }
 });
 
-/* ═══ 3D CARD TILT ON SAMPLES & MODELS ═══ */
-document.querySelectorAll('.clip-card, .mc, .stat').forEach(card => {
-  card.addEventListener('mousemove', (e) => {
-    const rect = card.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width - .5) * 12;
-    const y = ((e.clientY - rect.top) / rect.height - .5) * 12;
-    card.style.transform = `translateY(-8px) rotateX(${-y}deg) rotateY(${x}deg) perspective(800px)`;
-    card.style.transition = 'none';
+/* ═══ 3D CARD TILT ON SAMPLES & MODELS (DESKTOP ONLY) ═══ */
+if (hasFinePointer) {
+  document.querySelectorAll('.clip-card, .mc, .stat').forEach(card => {
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width - .5) * 10;
+      const y = ((e.clientY - rect.top) / rect.height - .5) * 10;
+      card.style.transform = `translateY(-6px) rotateX(${-y}deg) rotateY(${x}deg) perspective(800px)`;
+      card.style.transition = 'none';
+    }, { passive: true });
+    card.addEventListener('mouseleave', () => {
+      card.style.transform = '';
+      card.style.transition = '';
+    });
   });
-  card.addEventListener('mouseleave', () => {
-    card.style.transform = '';
-    card.style.transition = '';
-  });
-});
+}
 
 /* ═══ ROBOT OPERATING MODE CONTROLLER (LIVE ROBOT) ═══ */
 const modeBtns = document.querySelectorAll('.rmb-btn');
@@ -929,7 +1066,7 @@ function executeCommand(rawCmd) {
       soundWhoosh();
     }, 250);
   } else if (cmd === 'ACTION' || cmd === 'ACTION CLIP' || cmd === 'ACTION_CLIP' || cmd === 'BATTLE') {
-    addTermLine(`<span class="sys">[ACTION MATRIX]</span> Initializing 10-Second High-Octane Robot Action Feed...`);
+    addTermLine(`<span class="sys">[ACTION MATRIX]</span> Initializing High-Octane Robot Action Feed...`);
     const actionSec = document.getElementById('action-clip');
     if (actionSec) actionSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (actionVid) {
